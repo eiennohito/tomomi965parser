@@ -10,6 +10,8 @@ import client.HttpClient
 import client.methods.{HttpGet}
 import impl.client.DefaultHttpClient
 import scala.collection.mutable.MutableList
+import scala.concurrent.forkjoin.{ForkJoinTask, ForkJoinPool}
+import scala.concurrent.{Await, Future, ExecutionContext}
 
 object Main {
   def main(args:Array[String]) {
@@ -19,13 +21,20 @@ object Main {
     val path = args(0)
 
     val g = new Grabber(path)
-    g.uriList.reverse map {
-      x =>
-        val file = new File(path + x._2)
+    implicit val ec = ExecutionContext.fromExecutor(new ForkJoinPool(8))
+
+    val fls = g.uriList map {
+      case (uri, fname) =>
+        val file = new File(path + fname)
+        val fut = Future.successful(file)
         if (!file.exists()) {
-          g.loadUri(x._1, file)
+          g.loadUri(uri, fut)
+        } else {
+          fut
         }
     }
+    import scala.concurrent.duration._
+    Await.ready(Future.sequence(fls), 10 minutes)
     val sb = new StringBuilder(10 *1024 * 1024)
     g.fileList foreach {
       x =>

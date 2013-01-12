@@ -5,6 +5,7 @@ import java.net.{URL, URI}
 import scalax.file.Path
 import java.nio.file.OpenOption
 import scalax.io.{Codec, StandardOpenOption}
+import concurrent.{ExecutionContext, Future}
 
 /**
  * @author eiennohito
@@ -45,10 +46,13 @@ class Grabber(path: String) {
   }
   def uriList = struct flatMap { x => (1 to x._3) map { index : Int => prepareUri(x._1, x._2, index) } }
   def fileList = struct flatMap { x => (1 to x._3) map { index : Int => prepareFilePath(x._1, x._2, index) } }
-  def loadUri(uri: String, file : File) {
+  def loadUri(uri: String, fut : Future[File])(implicit ec: ExecutionContext) = {
     import scalax.io.JavaConverters._
-    val f = Path(file)
-    val inp = new URL(uri).asInput.chars("shift_jis")
-    f.writeChars(inp)("utf-8")
+    fut.map { file => {
+      val f = Path(file)
+      val inp = new URL(uri).asInput.chars("shift_jis")
+      f.writeChars(inp)("utf-8")
+      file
+    }}
   }
 }
