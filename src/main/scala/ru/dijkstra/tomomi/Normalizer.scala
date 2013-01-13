@@ -156,9 +156,36 @@ object Normalizer {
     }
   }
 
+  object XHash {
+    def unapply(s: String): Option[Int] = {
+      if (!s.startsWith("#")) {
+        return None
+      }
+      val s1 = s.substring(1)
+      try {
+        Some(s1.toInt)
+      } catch {
+        case _ => None
+      }
+    }
+  }
+
+  val entre = "&([#0-9a-zA-Z]+);".r
+  def entities(s: String) = {
+    entre.replaceSomeIn(s, {
+      case Groups(m) => m match {
+        case "lt" => Some("<")
+        case "gt" => Some(">")
+        case "nbsp" => Some(" ")
+        case "quot" => Some("\"")
+        case XHash(c) => Some(new String(Character.toChars(c)))
+      }
+    })
+  }
+
   def normalize(s: Sent) = {
     import Finder.MegaInt
-    val raw = StringUtils.strip(stripWs(s.data), " ")
+    val raw = StringUtils.strip(stripWs(entities(s.data)), " ")
     val woHtml = stripTags(raw)
     val (tags, clean) = separateTags(woHtml)
     matchTitle(clean) match {
