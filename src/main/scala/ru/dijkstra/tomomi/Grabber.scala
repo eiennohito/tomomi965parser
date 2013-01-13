@@ -50,7 +50,7 @@ class Grabber(path: String) {
     import scalax.io.JavaConverters._
     fut.map { file => {
       val f = Path(file)
-      val inp = new URL(uri).asInput.chars("shift_jis")
+      val inp = new URL(uri).asInput.chars("Windows-31J")
       f.writeChars(inp)("utf-8")
       file
     }}

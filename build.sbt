@@ -15,3 +15,7 @@ libraryDependencies += "com.github.scala-incubator.io" %% "scala-io-core" % "0.4
 libraryDependencies += "com.github.scala-incubator.io" %% "scala-io-file" % "0.4.1"
 
 libraryDependencies += "org.scalatest" % "scalatest_2.10" % "1.9.1" % "test"
+
+resolvers += Opts.resolver.sonatypeSnapshots
+
+libraryDependencies += "net.liftweb" %% "lift-json" % "2.5-SNAPSHOT"
