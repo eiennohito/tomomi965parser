@@ -3,10 +3,12 @@ package ru.dijkstra.tomomi
 import net.liftweb.json.DefaultFormats
 import org.apache.commons.lang3.StringUtils
 import collection.mutable.ListBuffer
+import tinkering.{EntryParser, Body}
 import util.matching.Regex.{Match, Groups}
 import util.parsing.combinator.RegexParsers
 import java.util.regex.Pattern
 import util.parsing.input.CharSequenceReader
+import annotation.tailrec
 
 /**
  * @author eiennohito
@@ -16,14 +18,15 @@ import util.parsing.input.CharSequenceReader
 case class Entry(
   writing: String,
   reading: String,
+  variant: Option[String],
   tags: List[String],
-  body: String,
+  body: List[Body],
   raw: String
 )
 
 object Normalizer {
 
-  val boldre = "</?[bB]>".r
+  val boldre = "</?([bB]|strong|STRONG)>".r
   def stripBold(s: String) = {
     boldre.replaceAllIn(s, "")
   }
@@ -124,21 +127,56 @@ object Normalizer {
       }
     }
 
+    def codeUnits(f: Int => Boolean): Parser[String] = new Parser[String] {
+      def apply(in: X.Input) = {
+        val src = in.source
+        @tailrec
+        def items(st: Int, end: Int): ParseResult[String] = {
+          if (in.atEnd) {
+            return Failure("Should not be at end", in.drop(end - st))
+          }
+          val c1 = src.charAt(end)
+          val e = if (Character.isHighSurrogate(c1)) {
+            if (src.length() <= end) {
+              return Failure("Should not be at end, prev is surrograte char", in.drop(end - st))
+            }
+            val c2 = src.charAt(end + 1)
+            if (!Character.isLowSurrogate(c2)) {
+              return Failure("Low surrogate should be after low surrogate", in.drop(end - st))
+            }
+            Character.toCodePoint(c2, c1)
+          } else {
+            c1.toInt
+          }
+          if (f(e)) {
+            items(st, end + (if (e == c1) 1 else 2))
+          } else {
+            if (st == end) {
+              Failure("Didn't match anything", in)
+            } else {
+              Success(src.subSequence(st, end).toString, in.drop(end - st))
+            }
+          }
+        }
+        items(in.offset, in.offset)
+      }
+    }
+
     def kana: Parser[String] =
-      Pattern.compile(raw"(\p{IsKatakana}|\p{IsHiragana})+", Pattern.UNICODE_CHARACTER_CLASS)
+      codeUnits(UnicodeUtil.isKana)
 
     def kanji: Parser[String] =
-      Pattern.compile("""\p{InCJK Unified Ideographs}+""")
+      codeUnits(UnicodeUtil.isKanji)
 
-    def reading = content(rep(kana | "[・,、。,]".r))
+    def reading = content(rep(kana | "[ゝ・,、。,~～]".r))
 
-    def writing = content(rep(kanji | kana | "[・、。]".r))
+    def writing = content(rep(kanji | kana | "[ゝ々・、。～]".r))
 
     def title = complexTitle | simpleWritingReading
 
 
     def complexTitle: Normalizer.X.Parser[(String, String)] = {
-      (writing ~ ("（" ~> reading <~ "）")) ^^ {
+      (writing ~ ("[\\(（]".r ~> reading <~ "[）\\)]".r)) ^^ {
         case a ~ b => (a, b)
       }
     }
@@ -183,6 +221,15 @@ object Normalizer {
     })
   }
 
+
+  val varre = "［[=＝](.+?)］".r
+  def findVar(s: String): Option[String] = {
+    varre.findFirstMatchIn(s) flatMap {
+      case Groups(v) => Some(stripTags(v))
+      case _ => None
+    }
+  }
+
   def normalize(s: Sent) = {
     import Finder.MegaInt
     val raw = StringUtils.strip(stripWs(entities(s.data)), " ")
@@ -196,7 +243,8 @@ object Normalizer {
           Nil
         } else {
           val cont = StringUtils.strip(clean.substring(idx))
-          List( Entry(w, r, tags, cont, raw) )
+          val vnt = findVar(raw)
+          List( Entry(w, r, vnt, tags, EntryParser.parse(cont), raw) )
         }
       }
       case _ => println(s"#ERROR:\n$$$clean\n%$raw"); Nil
